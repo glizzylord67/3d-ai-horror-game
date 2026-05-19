@@ -3,224 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Browser Horror Game</title>
+    <title>3D Horror Escape</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         #canvas-container { width: 100vw; height: 100vh; }
-        #crosshair {
-            position: absolute; top: 50%; left: 50%;
-            width: 8px; height: 8px; background: rgba(255,255,255,0.5);
-            border-radius: 50%; transform: translate(-50%, -50%);
-            pointer-events: none;
-        }
         #instructions {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85); color: #fff;
+            background: rgba(0,0,0,0.9); color: #fff;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             text-align: center; cursor: pointer; z-index: 10;
         }
-        h1 { color: #800000; margin-bottom: 10px; font-size: 3em; letter-spacing: 3px; }
-        p { margin: 5px 0; color: #aaa; }
+        h1 { color: #ff0000; font-size: 3.5em; letter-spacing: 5px; margin: 0; }
+        p { color: #888; font-size: 1.2em; margin: 10px 0; }
     </style>
-    <!-- Include Three.js via CDN -->
     <script src="https://cloudflare.com"></script>
 </head>
 <body>
 
     <div id="instructions">
-        <h1>THE DARKNESS</h1>
-        <p>Click anywhere to look around and play.</p>
-        <p><b>WASD</b> / Arrows to Move | <b>F</b> to Toggle Flashlight</p>
-        <p style="color: #800000; margin-top: 20px;">Avoid the Red Entity.</p>
+        <h1>THE INFINITE PILLARS</h1>
+        <p>CLICK HERE TO START RUNNING</p>
+        <p><b>WASD / Arrow Keys</b> to Move | <b>Mouse</b> to Look Around</p>
     </div>
-    
-    <div id="crosshair"></div>
     <div id="canvas-container"></div>
 
     <script>
-        // --- GAME SETUP ---
         const container = document.getElementById('canvas-container');
         const instructions = document.getElementById('instructions');
         
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x000000, 0.15); // Thick scary fog
+        scene.fog = new THREE.FogExp2(0x000000, 0.08);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 2, 0); // Start player at center
+        camera.position.set(0, 2, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
         container.appendChild(renderer.domElement);
 
-        // --- CONTROLS SYSTEM ---
         let isLocked = false;
-        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
-        const velocity = new THREE.Vector3();
-        const direction = new THREE.Vector3();
+        let moveFwd = false, moveBwd = false, moveLft = false, moveRgt = false;
+        const moveDirection = new THREE.Vector3();
         
-        // Click to launch game and request mouse lock
-        document.addEventListener('click', () => {
-            if (!isLocked) {
-                container.requestPointerLock();
-            }
-        });
-
+        document.addEventListener('click', () => { if(!isLocked) container.requestPointerLock(); });
         document.addEventListener('pointerlockchange', () => {
-            if (document.pointerLockElement === container) {
-                instructions.style.display = 'none';
-                isLocked = true;
-            } else {
-                instructions.style.display = 'flex';
-                isLocked = false;
-            }
+            isLocked = (document.pointerLockElement === container);
+            instructions.style.display = isLocked ? 'none' : 'flex';
         });
 
-        // Mouse rotation tracking
         const euler = new THREE.Euler(0, 0, 0, 'YXZ');
-        document.addEventListener('mousemove', (event) => {
+        document.addEventListener('mousemove', (e) => {
             if (!isLocked) return;
             euler.setFromQuaternion(camera.quaternion);
-            euler.y -= event.movementX * 0.0025;
-            euler.x -= event.movementY * 0.0025;
-            euler.x = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, euler.x));
+            euler.y -= e.movementX * 0.0025;
+            euler.x -= e.movementY * 0.0025;
+            euler.x = Math.max(-1.4, Math.min(1.4, euler.x));
             camera.quaternion.setFromEuler(euler);
         });
 
-        // Keyboard inputs
-        const onKeyDown = (e) => {
-            switch (e.code) {
-                case 'KeyW': case 'ArrowUp': moveForward = true; break;
-                case 'KeyS': case 'ArrowDown': moveBackward = true; break;
-                case 'KeyA': case 'ArrowLeft': moveLeft = true; break;
-                case 'KeyD': case 'ArrowRight': moveRight = true; break;
-                case 'KeyF': toggleFlashlight(); break;
-            }
+        const handleKeys = (e, val) => {
+            if(e.code==='KeyW'||e.code==='ArrowUp') moveFwd=val;
+            if(e.code==='KeyS'||e.code==='ArrowDown') moveBwd=val;
+            if(e.code==='KeyA'||e.code==='ArrowLeft') moveLft=val;
+            if(e.code==='KeyD'||e.code==='ArrowRight') moveRgt=val;
         };
+        document.addEventListener('keydown', (e) => handleKeys(e, true));
+        document.addEventListener('keyup', (e) => handleKeys(e, false));
 
-        const onKeyUp = (e) => {
-            switch (e.code) {
-                case 'KeyW': case 'ArrowUp': moveForward = false; break;
-                case 'KeyS': case 'ArrowDown': moveBackward = false; break;
-                case 'KeyA': case 'ArrowLeft': moveLeft = false; break;
-                case 'KeyD': case 'ArrowRight': moveRight = false; break;
-            }
-        };
-        document.addEventListener('keydown', onKeyDown);
-        document.addEventListener('keyup', onKeyUp);
+        const light = new THREE.AmbientLight(0x0a0a0a); scene.add(light);
+        const flash = new THREE.SpotLight(0xfffaed, 5, 40, 0.4, 0.5, 1);
+        scene.add(flash); scene.add(flash.target);
 
-        // --- LIGHTING ---
-        const ambientLight = new THREE.AmbientLight(0x050505); // Pitch black surroundings
-        scene.add(ambientLight);
-
-        const flashlight = new THREE.SpotLight(0xfffcd1, 5, 45, Math.PI / 5, 0.6, 1);
-        flashlight.castShadow = true;
-        scene.add(flashlight);
-        scene.add(flashlight.target);
-
-        function toggleFlashlight() {
-            flashlight.visible = !flashlight.visible;
-        }
-
-        // --- LEVEL GENERATION ---
-        const floorGeo = new THREE.PlaneGeometry(200, 200);
+        const floorGeo = new THREE.PlaneGeometry(500, 500);
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
         const floor = new THREE.Mesh(floorGeo, floorMat);
-        floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true;
-        scene.add(floor);
+        floor.rotation.x = -Math.PI/2; scene.add(floor);
 
-        const wallGeo = new THREE.BoxGeometry(4, 8, 4);
-        const wallMat = new THREE.MeshStandardMaterial({ color: 0x252525, roughness: 1.0 });
-
-        // FULLY FILLED ARRAY MAP: 1 is a brick wall, 0 is a clear open path
-        const mapLayout = [
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-            [1, 0, 1, 0, 1, 0, 1, 1, 0, 1],
-            [1, 0, 1, 0, 0, 0, 0, 1, 0, 1],
-            [1, 0, 1, 1, 1, 1, 0, 1, 0, 1],
-            [1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-            [1, 1, 1, 1, 0, 1, 1, 1, 0, 1],
-            [1, 0, 0, 1, 0, 0, 0, 1, 0, 1],
-            [1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        ];
-
-        for(let r = 0; r < mapLayout.length; r++) {
-            for(let c = 0; c < mapLayout[r].length; c++) {
-                if(mapLayout[r][c] === 1) {
-                    const wall = new THREE.Mesh(wallGeo, wallMat);
-                    wall.position.set((c - 5) * 4, 4, (r - 5) * 4);
-                    wall.castShadow = true;
-                    wall.receiveShadow = true;
-                    scene.add(wall);
-                }
-            }
+        // Generates random structural pillars instead of using a breaking text grid array
+        const pilGeo = new THREE.BoxGeometry(3, 20, 3);
+        const pilMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 1 });
+        for(let i=0; i<60; i++) {
+            const p = new THREE.Mesh(pilGeo, pilMat);
+            p.position.set((Math.random()-0.5)*150, 10, (Math.random()-0.5)*150);
+            if(p.position.distanceTo(camera.position) > 10) scene.add(p);
         }
 
-        // --- MONSTER AI ---
-        const enemyGeo = new THREE.CylinderGeometry(0.8, 0.8, 4, 8);
-        const enemyMat = new THREE.MeshBasicMaterial({ color: 0xaa0000 }); // Glowing red stalker
-        const enemy = new THREE.Mesh(enemyGeo, enemyMat);
-        enemy.position.set(12, 2, 12); 
-        scene.add(enemy);
-
-        let enemySpeed = 0.035;
-
-        // --- GAME RENDERING LOOP ---
-        const clock = new THREE.Clock();
+        const redGeo = new THREE.CylinderGeometry(1, 1, 5, 6);
+        const redMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const monster = new THREE.Mesh(redGeo, redMat);
+        monster.position.set(30, 2.5, 30); scene.add(monster);
 
         function animate() {
             requestAnimationFrame(animate);
-
             if (isLocked) {
-                const delta = clock.getDelta();
+                moveDirection.set(Number(moveRgt)-Number(moveLft), 0, Number(moveBwd)-Number(moveFwd)).normalize();
+                camera.translateX(moveDirection.x * 0.25);
+                camera.translateZ(moveDirection.z * 0.25);
+                camera.position.y = 2;
 
-                velocity.x -= velocity.x * 10.0 * delta;
-                velocity.z -= velocity.z * 10.0 * delta;
+                flash.position.copy(camera.position);
+                const targetVec = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                flash.target.position.copy(camera.position).add(targetVec);
 
-                direction.z = Number(moveForward) - Number(moveBackward);
-                direction.x = Number(moveRight) - Number(moveLeft);
-                direction.normalize();
+                const monDir = new THREE.Vector3().subVectors(camera.position, monster.position);
+                monDir.y = 0; monDir.normalize();
+                monster.position.addScaledVector(monDir, 0.08);
 
-                if (moveForward || moveBackward) velocity.z -= direction.z * 40.0 * delta;
-                if (moveLeft || moveRight) velocity.x -= direction.x * 40.0 * delta;
-
-                camera.translateX(-velocity.x * delta);
-                camera.translateZ(velocity.z * delta);
-                camera.position.y = 2; // Lock head height
-
-                // Align Flashlight beam perfectly to mouse movements
-                flashlight.position.copy(camera.position);
-                const vector = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-                flashlight.target.position.copy(camera.position).add(vector);
-
-                // Monster tracking movement
-                const enemyDir = new THREE.Vector3().subVectors(camera.position, enemy.position);
-                enemyDir.y = 0; 
-                enemyDir.normalize();
-                enemy.position.addScaledVector(enemyDir, enemySpeed);
-
-                // Jumpscare collision checker
-                const distanceToPlayer = camera.position.distanceTo(enemy.position);
-                if (distanceToPlayer < 2.2) {
+                if (camera.position.distanceTo(monster.position) < 2.5) {
                     document.exitPointerLock();
-                    alert("THE RED ENTITY CAUGHT YOU. GAME OVER.");
+                    alert("THE ENTITY CAUGHT YOU.");
                     camera.position.set(0, 2, 0);
-                    enemy.position.set(12, 2, 12);
+                    monster.position.set(30, 2.5, 30);
                 }
             }
-
             renderer.render(scene, camera);
         }
-
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-
         animate();
     </script>
 </body>
