@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Browser Horror Game</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; }
+        #crosshair {
+            position: absolute; top: 50%; left: 50%;
+            width: 8px; height: 8px; background: rgba(255,255,255,0.5);
+            border-radius: 50%; transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #instructions {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); color: #fff;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            text-align: center; cursor: pointer; z-index: 10;
+        }
+        h1 { color: #800000; margin-bottom: 10px; font-size: 3em; letter-spacing: 3px; }
+        p { margin: 5px 0; color: #aaa; }
+    </style>
+    <!-- Include Three.js via CDN -->
+    <script src="https://cloudflare.com"></script>
+</head>
+<body>
+
+    <div id="instructions">
+        <h1>THE DARKNESS</h1>
+        <p>Click anywhere to look around and play.</p>
+        <p><b>WASD</b> / Arrows to Move | <b>F</b> to Toggle Flashlight</p>
+        <p style="color: #800000; margin-top: 20px;">Avoid the Red Entity.</p>
+    </div>
+    
+    <div id="crosshair"></div>
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- GAME SETUP ---
+        const container = document.getElementById('canvas-container');
+        const instructions = document.getElementById('instructions');
+        
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.15); // Adds terrifying thick fog
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 2, 0); // Player height
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        // --- CONTROLS SYSTEM ---
+        let isLocked = false;
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        const velocity = new THREE.Vector3();
+        const direction = new THREE.Vector3();
+        
+        // Pointer Lock setup for mouse-look
+        document.addEventListener('click', () => {
+            if (!isLocked) container.requestPointerLock();
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === container) {
+                instructions.style.display = 'none';
+                isLocked = true;
+            } else {
+                instructions.style.display = 'flex';
+                isLocked = false;
+            }
+        });
+
+        // Mouse rotation tracking
+        const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+        document.addEventListener('mousemove', (event) => {
+            if (!isLocked) return;
+            euler.setFromQuaternion(camera.quaternion);
+            euler.y -= event.movementX * 0.0025;
+            euler.x -= event.movementY * 0.0025;
+            euler.x = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, euler.x)); // Limit vertical look
+            camera.quaternion.setFromEuler(euler);
+        });
+
+        // Keyboard movement mechanics
+        const onKeyDown = (e) => {
+            switch (e.code) {
+                case 'KeyW': case 'ArrowUp': moveForward = true; break;
+                case 'KeyS': case 'ArrowDown': moveBackward = true; break;
+                case 'KeyA': case 'ArrowLeft': moveLeft = true; break;
+                case 'KeyD': case 'ArrowRight': moveRight = true; break;
+                case 'KeyF': toggleFlashlight(); break;
+            }
+        };
+
+        const onKeyUp = (e) => {
+            switch (e.code) {
+                case 'KeyW': case 'ArrowUp': moveForward = false; break;
+                case 'KeyS': case 'ArrowDown': moveBackward = false; break;
+                case 'KeyA': case 'ArrowLeft': moveLeft = false; break;
+                case 'KeyD': case 'ArrowRight': moveRight = false; break;
+            }
+        };
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keyup', onKeyUp);
+
+        // --- ENVIRONMENT CREATION ---
+        // Ambient Light (almost zero to ensure it is dark)
+        const ambientLight = new THREE.AmbientLight(0x0a0a0a);
+        scene.add(ambientLight);
+
+        // Flashlight mechanic
+        const flashlight = new THREE.SpotLight(0xfffcd1, 3, 35, Math.PI / 5, 0.5, 1);
+        flashlight.castShadow = true;
+        scene.add(flashlight);
+        scene.add(flashlight.target); // Spotlight requires target to track direction
+
+        function toggleFlashlight() {
+            flashlight.visible = !flashlight.visible;
+        }
+
+        // Floor Grid
+        const floorGeo = new THREE.PlaneGeometry(100, 100);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Simple Procedural Horror Maze Walls
+        const wallGeo = new THREE.BoxGeometry(4, 8, 4);
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 1.0 });
+        const walls = [];
+
+        const mapLayout = [
+            [1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,1,0,0,0,0,1],
+            [1,0,1,0,1,0,1,1,0,1],
+            [1,0,1,0,0,0,0,1,0,1],
+            [1,0,1,1,1,1,0,1,0,1],
+            [1,0,0,0,0,1,0,0,0,1],
+            [1,1,1,1,0,1,1,1,0,1],
+            [1,0,0,0,0,0,0,1,0,1],
+            [1,0,1,1,1,1,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1]
+        ];
+
+        for(let r = 0; r < mapLayout.length; r++) {
+            for(let c = 0; c < mapLayout[r].length; c++) {
+                if(mapLayout[r][c] === 1) {
+                    const wall = new THREE.Mesh(wallGeo, wallMat);
+                    // Center the map around 0,0 coordinates
+                    wall.position.set((c - 5) * 4, 4, (r - 5) * 4);
+                    wall.castShadow = true;
+                    wall.receiveShadow = true;
+                    scene.add(wall);
+                    walls.push(wall);
+                }
+            }
+        }
+
+        // --- ENEMY AI ---
+        const enemyGeo = new THREE.CylinderGeometry(0.8, 0.8, 3.5, 8);
+        const enemyMat = new THREE.MeshBasicMaterial({ color: 0x880000 }); // Glowing creepy red mesh
+        const enemy = new THREE.Mesh(enemyGeo, enemyMat);
+        enemy.position.set(12, 1.75, 12); // Start enemy deep inside the maze
+        scene.add(enemy);
+
+        let enemySpeed = 0.035;
+
+        // --- GAME LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isLocked) {
+                const delta = clock.getDelta();
+
+                // Player Movement Physics
+                velocity.x -= velocity.x * 10.0 * delta;
+                velocity.z -= velocity.z * 10.0 * delta;
+
+                direction.z = Number(moveForward) - Number(moveBackward);
+                direction.x = Number(moveRight) - Number(moveLeft);
+                direction.normalize();
+
+                if (moveForward || moveBackward) velocity.z -= direction.z * 40.0 * delta;
+                if (moveLeft || moveRight) velocity.x -= direction.x * 40.0 * delta;
+
+                camera.translateX(-velocity.x * delta);
+                camera.translateZ(velocity.z * delta);
+                camera.position.y = 2; // Lock vertical camera plane
+
+                // Lock Flashlight exactly to Player Camera view
+                flashlight.position.copy(camera.position);
+                const vector = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                flashlight.target.position.copy(camera.position).add(vector);
+
+                // Simple AI: Move directly towards player coordinates
+                const enemyDir = new THREE.Vector3().subVectors(camera.position, enemy.position);
+                enemyDir.y = 0; // Prevent enemy from flying upward
+                enemyDir.normalize();
+                enemy.position.addScaledVector(enemyDir, enemySpeed);
+
+                // Jumpscare/Game Over Check
+                const distanceToPlayer = camera.position.distanceTo(enemy.position);
+                if (distanceToPlayer < 2.0) {
+                    document.exitPointerLock();
+                    alert("IT FOUND YOU. GAME OVER.");
+                    // Reset positions
+                    camera.position.set(0, 2, 0);
+                    enemy.position.set(12, 1.75, 12);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Window resize adjustment
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
